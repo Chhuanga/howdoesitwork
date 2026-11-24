@@ -1,26 +1,971 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --font-display: var(--font-display-face);
 }
 
-@media (prefers-color-scheme: dark) {
+:root {
+  --bg: #0f0f1a;
+  --text: #f1f5f9;
+  --accent: #6366f1;
+
+  /* Motion: one spring and one soft ease, used everywhere */
+  --ease-out: cubic-bezier(0.2, 0.9, 0.3, 1);
+  --spring: var(--ease-out);
+  --spring-time: 520ms;
+}
+
+/* A real spring curve, with a slight overshoot, where the browser supports it */
+@supports (transition-timing-function: linear(0, 1)) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --spring: linear(
+      0, 0.006, 0.025 2.8%, 0.101 6.1%, 0.539 18.9%, 0.721 25.3%, 0.849 31.5%,
+      0.937 38.1%, 0.968 41.8%, 0.991 45.7%, 1.006 50.1%, 1.015 55%, 1.017 63.9%,
+      1.001 85.9%, 1
+    );
+    --spring-time: 700ms;
   }
 }
 
+/* Text, spacing and the side card are all in rem, so on big screens they grow
+   together: 16px up to 1280px wide, then up to 20px at 2560px. Percentages keep
+   the browser's own text-size setting in charge. lib/viewport.ts reads this. */
+html {
+  font-size: 100%;
+}
+@media (min-width: 1280px) {
+  html {
+    font-size: clamp(100%, 0.3125vw + 75%, 125%);
+  }
+}
+
+html,
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  height: 100%;
+  /* The visible height on phones, which changes as the browser's bars hide */
+  height: 100dvh;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+/* ── Scene ─────────────────────────────────────────────────────────────────── */
+
+.scene-vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 50% 38%, transparent 45%, rgba(8, 8, 18, 0.55) 100%);
+}
+
+/* The part of the screen the sheet leaves free. Clicks fall through to the 3D
+   scene unless a control opts back in with pointer-events-auto. */
+.stage-overlay {
+  position: fixed;
+  inset: 0 0 var(--sheet, 0px) var(--side, 0px);
+  pointer-events: none;
+}
+
+/* ── Glass ─────────────────────────────────────────────────────────────────── */
+
+.glass {
+  background: rgba(22, 22, 48, 0.55);
+  -webkit-backdrop-filter: blur(18px) saturate(1.5);
+  backdrop-filter: blur(18px) saturate(1.5);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.city-thumb {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 4px;
+  border-radius: 9999px;
+  background: linear-gradient(180deg, #7c7ff7, #5558e8);
+  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.5);
+  transition: transform var(--spring-time) var(--spring);
+}
+
+/* ── The sheet ──────────────────────────────────────────────────────────────
+   Phone: fixed to the bottom, as tall as its content up to a cap, draggable.
+   Wide screen: a card docked bottom-left, so it never covers the city. */
+
+.sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  margin: 0 auto;
+  width: min(100%, 600px);
+  /* Everything inside sizes itself from the sheet's own width (the cqi units
+     below), so it reads the same in a narrow phone sheet and a side card */
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 28px 28px 0 0;
+  background: linear-gradient(180deg, rgba(28, 28, 60, 0.72), rgba(15, 15, 32, 0.86));
+  -webkit-backdrop-filter: blur(24px) saturate(1.6);
+  backdrop-filter: blur(24px) saturate(1.6);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 0;
+  box-shadow: 0 -18px 50px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+.beat-sheet {
+  height: var(--sheet-h);
+}
+.landing-sheet {
+  max-height: 72%;
+}
+/* Leave room for the notch and rounded corners on phones held sideways */
+.sheet {
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+/* While it is being dragged the sheet follows the finger exactly; once let go
+   it springs to its resting height, and the on-scene controls ride with it. */
+.sheet.sheet-settle {
+  transition: height var(--spring-time) var(--spring);
+}
+.stage-overlay.sheet-settle {
+  transition: inset var(--spring-time) var(--spring);
+}
+
+.sheet-header {
+  flex-shrink: 0;
+  padding: 0 clamp(0.875rem, 5.2cqi, 1.5rem) clamp(0.625rem, 3.2cqi, 0.875rem);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.sheet-header:active {
+  cursor: grabbing;
+}
+
+/* The handle is a real button with a finger-sized hit area around a thin bar */
+.sheet-grip {
+  display: block;
+  width: 100%;
+  height: 28px;
+  cursor: inherit;
+}
+.sheet-handle {
+  display: block;
+  width: 40px;
+  height: 4px;
+  margin: 0 auto;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.3);
+  transition: width 200ms var(--ease-out), background 200ms;
+}
+.sheet-grip:hover .sheet-handle,
+.sheet-handle[data-tucked='true'] {
+  width: 56px;
+  background: rgba(165, 180, 252, 0.9);
+}
+.sheet-grip:focus-visible {
+  outline: none;
+}
+.sheet-grip:focus-visible .sheet-handle {
+  box-shadow: 0 0 0 3px rgba(165, 180, 252, 0.6);
+}
+
+.sheet-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* Fade whichever edge has more text beyond it */
+  --fade-up: 0px;
+  --fade-down: 0px;
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 var(--fade-up), #000 calc(100% - var(--fade-down)), transparent);
+  mask-image: linear-gradient(to bottom, transparent, #000 var(--fade-up), #000 calc(100% - var(--fade-down)), transparent);
+}
+.sheet-scroll[data-more-up='true'] {
+  --fade-up: 28px;
+}
+.sheet-scroll[data-more-down='true'] {
+  --fade-down: 36px;
+}
+
+.sheet-content {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(0.625rem, 3.2cqi, 0.875rem);
+  padding: 2px clamp(0.875rem, 5.2cqi, 1.5rem) 1rem;
+}
+
+.sheet-footer {
+  flex-shrink: 0;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: clamp(0.375rem, 2.6cqi, 0.75rem);
+  padding: 10px clamp(0.625rem, 3.8cqi, 1rem) calc(0.75rem + env(safe-area-inset-bottom));
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(12, 12, 28, 0.35);
+}
+
+.section-label {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 0.6875rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #7c86a8;
+}
+
+/* Footer middle: step dots, and until Next unlocks, a plain grey status */
+.footer-status {
+  justify-self: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.375rem;
+  min-width: 0;
+}
+.unlock-hint {
+  font-size: clamp(0.6875rem, 3.3cqi, 0.8125rem);
+  line-height: 1.25;
+  color: #94a3b8;
+  text-align: center;
+}
+
+.steps {
+  display: flex;
+  gap: 6px;
+}
+.steps i {
+  width: 22px;
+  height: 4px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.16);
+}
+.steps i[data-on='true'] {
+  background: #a5b4fc;
+}
+/* The beat you are on, before it is done: a ring, not a fill */
+.steps i[data-here='true'][data-on='false'] {
+  box-shadow: inset 0 0 0 1px #a5b4fc;
+}
+
+/* Side card: wide screens, and phones held sideways. The same rule, and the
+   same sizes, as isSide / sideWidth / sideGap in lib/sheet.ts. */
+@media (min-width: 900px), (min-width: 640px) and (max-height: 519px) and (orientation: landscape) {
+  .sheet {
+    --gap: 1.5rem;
+    left: calc(var(--gap) + env(safe-area-inset-left));
+    right: auto;
+    bottom: var(--gap);
+    margin: 0;
+    width: clamp(20rem, 34vw, 28.75rem);
+    padding-left: 0;
+    padding-right: 0;
+    border-radius: 28px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  }
+  /* The front page's card is narrower than a beat's: the city is the hero */
+  .landing-sheet {
+    width: clamp(20rem, 28vw, 24rem);
+    max-height: calc(100% - var(--gap) * 2);
+  }
+  /* Nothing to drag on a docked card */
+  .sheet-header {
+    cursor: default;
+    touch-action: auto;
+    padding-top: clamp(0.875rem, 5cqi, 1.375rem);
+  }
+  .sheet-grip {
+    display: none;
+  }
+}
+@media (max-height: 519px) {
+  .sheet {
+    --gap: 0.75rem;
+  }
+}
+
+/* Very narrow phones: let the footer's hint wrap under tighter buttons */
+@container (max-width: 350px) {
+  .sheet-footer {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+  .btn-quiet {
+    padding: 0 6px;
+  }
+}
+
+/* ── Type ──────────────────────────────────────────────────────────────────── */
+
+.eyebrow {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 0.6875rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: #a5b4fc;
+}
+
+/* The stressed word in a headline or question: a serif italic against the
+   grotesk. Instrument Serif runs small, so it is set a little larger. */
+.question em,
+.hero-title em {
+  font-family: var(--font-accent-face), Georgia, serif;
+  font-style: italic;
+  font-weight: 400;
+  font-size: 1.12em;
+  letter-spacing: -0.01em;
+  line-height: 0.9;
+}
+
+.question {
+  margin-top: 6px;
+  font-family: var(--font-display-face), var(--font-geist-sans), system-ui, sans-serif;
+  font-size: clamp(1.25rem, 6.2cqi, 1.75rem);
+  font-weight: 700;
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+.question em {
+  font-style: italic;
+  color: #c7d2fe;
+}
+
+/* Big numbers: minutes, totals */
+.numeral {
+  font-family: var(--font-display-face), var(--font-geist-sans), system-ui, sans-serif;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+
+.chip {
+  padding: 3px 11px;
+  border-radius: 9999px;
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 0.75rem;
+  color: #c7d2fe;
+  background: rgba(99, 102, 241, 0.16);
+  border: 1px solid rgba(129, 140, 248, 0.3);
+}
+
+/* ── Buttons ───────────────────────────────────────────────────────────────── */
+
+.btn-primary,
+.btn-glass {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.75rem;
+  padding: 10px clamp(0.875rem, 5cqi, 1.375rem);
+  border-radius: 9999px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  white-space: nowrap;
+  color: #fff;
+  transition: transform 180ms var(--ease-out), box-shadow 180ms var(--ease-out), background 180ms;
+}
+.btn-primary {
+  background: linear-gradient(180deg, #7c7ff7, #5558e8);
+  box-shadow: 0 6px 24px rgba(99, 102, 241, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+.btn-primary:hover {
+  box-shadow: 0 8px 32px rgba(99, 102, 241, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  transform: translateY(-1px);
+}
+.btn-glass {
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+.btn-glass:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+.btn-primary:active,
+.btn-glass:active {
+  transform: scale(0.96);
+}
+
+/* Next, before the beat's point has landed: visibly there, visibly not ready */
+.btn-locked {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: none;
+  color: rgba(255, 255, 255, 0.35);
+  cursor: not-allowed;
+}
+.btn-locked:hover {
+  box-shadow: none;
+  transform: none;
+}
+/* ...and the moment it unlocks, it calls for the tap */
+@keyframes arrive {
+  0% { transform: scale(0.9); box-shadow: 0 0 0 0 rgba(129, 140, 248, 0.8); }
+  60% { transform: scale(1.06); }
+  100% { transform: scale(1); box-shadow: 0 0 0 14px rgba(129, 140, 248, 0); }
+}
+.btn-arrive {
+  animation: arrive 700ms var(--ease-out);
+}
+
+.btn-quiet {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+  padding: 0 12px;
+  border-radius: 9999px;
+  font-size: 0.875rem;
+  color: #94a3b8;
+  transition: color 160ms, background 160ms;
+}
+.btn-quiet:hover {
+  color: #f1f5f9;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+a:focus-visible,
+button:focus-visible {
+  outline: 2px solid #a5b4fc;
+  outline-offset: 2px;
+}
+
+/* ── Entrances ─────────────────────────────────────────────────────────────── */
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+.reveal-in {
+  animation: rise-in 520ms var(--ease-out) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sheet.sheet-settle,
+  .stage-overlay.sheet-settle,
+  .city-thumb,
+  .btn-primary,
+  .btn-glass {
+    transition: none;
+  }
+  .reveal-in,
+  .btn-arrive {
+    animation: none;
+  }
+}
+
+/* ── Beat 2: the waiting list and the rewind slider ────────────────────────── */
+
+.queue-chip {
+  padding: 6px 12px;
+  border-radius: 12px;
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 0.875rem;
+  color: #f1f5f9;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  transition: border-color 160ms, background 160ms, transform 160ms var(--ease-out);
+}
+.queue-chip:hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.4);
+}
+.queue-chip:active:not(:disabled) {
+  transform: scale(0.95);
+}
+/* Top of the sorted queue: the one to lock in next. Sky, like every option;
+   green is kept for dots already locked in. */
+.queue-chip-top {
+  color: #e0f2fe;
+  background: rgba(56, 189, 248, 0.14);
+  border-color: #38bdf8;
+  box-shadow: 0 0 18px rgba(56, 189, 248, 0.3);
+}
+.queue-chip-wrong {
+  color: #fed7aa;
+  background: rgba(249, 115, 22, 0.12);
+  border-color: rgba(251, 146, 60, 0.8);
+  animation: shake 380ms var(--ease-out);
+}
+
+@keyframes shake {
+  20% { transform: translateX(-6px); }
+  40% { transform: translateX(5px); }
+  60% { transform: translateX(-3px); }
+  80% { transform: translateX(2px); }
+}
+
+/* The copy of a chip that flies to its dot */
+.chip-ghost {
+  position: fixed;
+  z-index: 60;
+  margin: 0;
+  pointer-events: none;
+  animation: none;
+}
+
+.scrub {
+  display: block;
+}
+.scrub-label {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+.scrub input {
+  -webkit-appearance: none;
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 24px;
+  background: transparent;
+  cursor: pointer;
+}
+.scrub input::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 9999px;
+  background: linear-gradient(90deg, #818cf8 var(--fill), rgba(255, 255, 255, 0.14) var(--fill));
+}
+.scrub input::-moz-range-track {
+  height: 4px;
+  border-radius: 9999px;
+  background: linear-gradient(90deg, #818cf8 var(--fill), rgba(255, 255, 255, 0.14) var(--fill));
+}
+.scrub input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 20px;
+  height: 20px;
+  margin-top: -8px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 0 4px rgba(129, 140, 248, 0.35), 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+.scrub input::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 0 4px rgba(129, 140, 248, 0.35), 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+
+/* ── Sheet extras: progress, sound, chip definitions ───────────────────────── */
+
+.progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.06);
+  pointer-events: none;
+}
+.progress > span {
+  display: block;
+  height: 100%;
+  border-radius: 0 9999px 9999px 0;
+  background: linear-gradient(90deg, #6366f1, #a5b4fc);
+  box-shadow: 0 0 12px rgba(129, 140, 248, 0.8);
+  transition: width var(--spring-time) var(--spring);
+}
+
+.icon-btn {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  color: #cbd5e1;
+}
+.icon-btn:hover {
+  color: #fff;
+}
+
+button.chip {
+  cursor: pointer;
+  transition: background 160ms, border-color 160ms;
+}
+button.chip:hover,
+button.chip[aria-expanded='true'] {
+  background: rgba(99, 102, 241, 0.32);
+  border-color: rgba(165, 180, 252, 0.7);
+}
+.definition {
+  padding: 10px 14px;
+  border-radius: 14px;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: #cbd5e1;
+  background: rgba(99, 102, 241, 0.1);
+  border: 1px solid rgba(129, 140, 248, 0.22);
+}
+
+/* ── Landing ───────────────────────────────────────────────────────────────── */
+
+.hero-title {
+  font-family: var(--font-display-face), var(--font-geist-sans), system-ui, sans-serif;
+  font-size: clamp(1.625rem, 9cqi, 2.75rem);
+  font-weight: 800;
+  line-height: 1.02;
+  letter-spacing: -0.03em;
+  text-wrap: balance;
+}
+.hero-title em {
+  font-style: italic;
+  color: #a5b4fc;
+}
+
+/* A city to pick: thumbnail, name, two-line blurb, real size. Every card has
+   the same rows, so two side by side line up exactly. */
+.city-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.5rem 0.5rem 0.75rem;
+  border-radius: 18px;
+  text-align: left;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: border-color 200ms, background 200ms, box-shadow 200ms, transform 200ms var(--ease-out);
+}
+.city-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+.city-card:focus-visible {
+  outline: 2px solid #a5b4fc;
+  outline-offset: 2px;
+}
+.city-card[aria-pressed='true'] {
+  background: rgba(99, 102, 241, 0.2);
+  border-color: #a5b4fc;
+  box-shadow: 0 0 0 1px #a5b4fc, 0 0 28px rgba(99, 102, 241, 0.35);
+}
+
+.city-thumb-box {
+  position: relative;
+  display: block;
+  height: 4rem;
+  margin-bottom: 0.25rem;
+  border-radius: 12px;
+  background: rgba(8, 8, 20, 0.55);
+  overflow: hidden;
+}
+.city-graph {
+  width: 100%;
+  height: 100%;
+}
+.city-graph-roads {
+  fill: none;
+  stroke: rgba(148, 163, 184, 0.45);
+  stroke-width: 1.25;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: stroke 200ms;
+}
+.city-graph-dot {
+  fill: rgba(203, 213, 225, 0.55);
+  transition: fill 200ms;
+}
+.city-card[aria-pressed='true'] .city-graph-roads {
+  stroke: rgba(165, 180, 252, 0.85);
+}
+.city-card[aria-pressed='true'] .city-graph-dot {
+  fill: #e0e7ff;
+}
+.city-check {
+  position: absolute;
+  top: 0.375rem;
+  right: 0.375rem;
+  display: grid;
+  place-items: center;
+  width: 1.125rem;
+  height: 1.125rem;
+  border-radius: 9999px;
+  color: #0f0f1a;
+  background: #a5b4fc;
+}
+
+.city-name,
+.city-blurb,
+.city-stat {
+  display: block;
+  padding: 0 0.375rem;
+}
+.city-name {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #f1f5f9;
+}
+.city-blurb {
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: #94a3b8;
+  /* Always two lines tall, so the stat rows sit level */
+  min-height: 2.7em;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.city-stat {
+  margin-top: auto;
+  padding-top: 0.25rem;
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 0.625rem;
+  letter-spacing: 0.04em;
+  color: #64748b;
+}
+.city-card[aria-pressed='true'] .city-stat {
+  color: #a5b4fc;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .queue-chip-wrong {
+    animation: none;
+  }
+  .progress > span,
+  .city-card {
+    transition: none;
+  }
+}
+
+/* ── Pin tags ──────────────────────────────────────────────────────────────────
+   The small labels over the start and end cones: "A · Connaught Place".
+   Moved every frame by components/PinTags.tsx; never in the way of a tap. */
+.pin-tags {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.pin-tag {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transition: opacity 200ms;
+  will-change: transform;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.1875rem 0.5rem 0.1875rem 0.375rem;
+  white-space: nowrap;
+  border-radius: 9999px;
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 0.625rem;
+  letter-spacing: 0.04em;
+  color: #e2e8f0;
+  background: rgba(15, 15, 32, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+  user-select: none;
+}
+.pin-tag i {
+  width: 0.4375rem;
+  height: 0.4375rem;
+  border-radius: 9999px;
+}
+
+/* Each waiting-dot chip carries the sky-blue "pick me next" mark, the same
+   colour as its dot and its route on the map */
+.queue-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border-color: rgba(56, 189, 248, 0.45);
+}
+.queue-chip::before {
+  content: "";
+  width: 0.45rem;
+  height: 0.45rem;
+  flex-shrink: 0;
+  border-radius: 9999px;
+  background: #38bdf8;
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.8);
+}
+/* An option pointed at, from its chip or its route on the map */
+.queue-chip-pointed {
+  color: #f0f9ff;
+  border-color: #38bdf8;
+  background: rgba(56, 189, 248, 0.2);
+  box-shadow: 0 0 0 1px #38bdf8, 0 0 18px rgba(56, 189, 248, 0.35);
+}
+
+/* "Tap a chip, or a blue arrow on the map": a little dashed arrow in the
+   option colour, so the sheet and the map share one visual word */
+.option-legend {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: #7dd3fc;
+}
+.option-swatch {
+  position: relative;
+  width: 1.5rem;
+  height: 2px;
+  flex-shrink: 0;
+  background: repeating-linear-gradient(90deg, #38bdf8 0 5px, transparent 5px 8px);
+}
+.option-swatch::after {
+  content: "";
+  position: absolute;
+  right: -3px;
+  top: -3px;
+  border-left: 6px solid #38bdf8;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+}
+
+/* ── Dot labels ────────────────────────────────────────────────────────────────
+   Over each dot during a search (components/NodeLabels.tsx): the best time so
+   far in a pill above, the name in bold mono below. The wrapper sits on the
+   dot's centre; its two parts are pushed up and down from there. */
+.node-labels {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.node-label {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  will-change: transform;
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+}
+.node-name,
+.node-time {
+  position: absolute;
+  left: 0;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+.node-name {
+  top: 0.9rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #cbd5e1;
+  text-shadow: 0 0 3px #0b0b16, 0 0 6px #0b0b16, 0 1px 2px #0b0b16;
+}
+.node-time {
+  bottom: 0.85rem;
+  min-width: 1.5rem;
+  padding: 0.0625rem 0.375rem;
+  border-radius: 9999px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-align: center;
+  line-height: 1.35;
+  color: #0b1220;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+}
+.node-label[data-state='none'] .node-name {
+  color: #64748b;
+}
+.node-label[data-state='locked'] .node-time {
+  background: #34d399;
+}
+.node-label[data-state='next'] .node-time {
+  background: #38bdf8;
+}
+.node-label[data-state='path'] .node-time {
+  background: #fbbf24;
+}
+.node-label[data-state='path'] .node-name {
+  color: #fde68a;
+}
+
+/* ── Map key and credit ────────────────────────────────────────────────────────
+   Over the scene, in the part the sheet leaves clear. */
+.graph-legend {
+  position: absolute;
+  top: 4.25rem;
+  left: 0.875rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 14px;
+  font-size: 0.6875rem;
+  color: #cbd5e1;
+  pointer-events: none;
+}
+.graph-legend li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.graph-legend .lg-note {
+  margin-top: 0.15rem;
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 0.625rem;
+  color: #94a3b8;
+}
+.lg-road {
+  width: 1.25rem;
+  height: 2px;
+  border-radius: 2px;
+  background: #4f46e5;
+}
+.lg-slow {
+  height: 4px;
+  background: #ef4444;
+}
+.lg-route {
+  height: 4px;
+  background: #fbbf24;
+}
+.lg-dot {
+  width: 0.7rem;
+  height: 0.7rem;
+  margin: 0 0.275rem;
+  border-radius: 9999px;
+}
+.lg-locked {
+  background: #34d399;
+}
+.lg-next {
+  background: #38bdf8;
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.35);
+}
+.map-credit {
+  position: absolute;
+  right: 0.75rem;
+  bottom: 0.375rem;
+  font-size: 0.625rem;
+  color: #64748b;
+  pointer-events: auto;
+}
+.map-credit:hover {
+  color: #cbd5e1;
+}
+
+/* "PRIORITY QUEUE · LOWEST FIRST": appears once the learner has earned it */
+.queue-caption {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 0.75rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #7dd3fc;
 }

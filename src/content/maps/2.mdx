@@ -1,0 +1,16 @@
+---
+title: Finding the cheapest path
+question: Hundreds of routes. How does Maps avoid trying them all?
+csTerms:
+  - Dijkstra's algorithm
+  - Priority queue
+  - Greedy
+unlockHint: Find the route to continue
+honestyNote: Real Maps uses A* and contraction hierarchies to handle millions of roads. Dijkstra is the core idea underneath both.
+---
+
+Maps never lists the routes. It keeps one rule: **lock in the closest waiting dot, then update its neighbours.**
+
+The closest waiting dot can never be beaten by a detour, because every other way to reach it starts from something farther away. So its time is final (locked in), and the search spreads outward from the start, cheapest first, until it reaches the end.
+
+A list that always keeps the cheapest entry on top is called a **priority queue**.
