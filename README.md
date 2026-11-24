@@ -1,36 +1,34 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# howitworks
 
-## Getting Started
+Teaches the computer science behind everyday apps. Tap X-ray on a real city and see the graph underneath Google Maps. Plain English first, CS term second.
 
-First, run the development server:
+Built with Next.js (App Router), TypeScript, Tailwind v4, React Three Fiber, Zustand and Vitest.
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm run dev      # http://localhost:3000
+npm test         # simulation and content tests
+npm run build
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## How it fits together
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| Folder | What lives there |
+| --- | --- |
+| `src/sim/` | Pure TypeScript, no React: the graph, Dijkstra, traffic, buildings, and the traced cities (`cities.ts`, `data/`). Unit-tested. |
+| `src/scene/` | The 3D scene (React Three Fiber): roads, buildings, cars, the X-ray overlay. |
+| `src/beats/<topic>/` | One interaction component per beat: the scene plus its controls. |
+| `src/content/<topic>/<n>.mdx` | One file per beat: title, question, CS terms, and the reveal text. |
+| `src/components/` | `SceneStage` (the one 3D canvas, mounted in the root layout and kept alive between pages), `BeatShell` (the draggable glass sheet), `Landing`, city switch, CS chip. |
+| `src/lib/` | `topics.ts` (what beats exist), `interactionRegistry.tsx`, `sceneStore.ts` (what the shared scene should show), quality tier, sounds, design tokens, the city store. |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Adding a beat
 
-## Learn More
+1. Add its id to the topic in `src/lib/topics.ts`. Beat numbers and Back/Next links come from that order.
+2. Write `src/content/<topic>/<id>.mdx`. Frontmatter: `title`, `question`, `csTerms`, and optionally `honestyNote` and `unlockHint` (what the learner must do to unlock Next).
+3. Write the interaction in `src/beats/<topic>/` and add it to `src/lib/interactionRegistry.tsx`. Tell the shared scene what to show with `setScene(...)`, call `useReveal()` when the learner has seen the point, and wrap sheet controls in `<CardSlot>`. Add a line to `src/content/glossary.ts` for any new CS term.
 
-To learn more about Next.js, take a look at the following resources:
+`npm test` fails if a beat has no MDX file, or an MDX file isn't listed.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Cities
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+`src/sim/cities.ts` has two real places, traced from OpenStreetMap: central New Delhi and Indiranagar, Bengaluru. Junctions, street names, road lengths and shapes, lane counts, medians, parks and water are real. Traffic is invented. The map data is © OpenStreetMap contributors (ODbL), and the app shows that credit on screen. Files in `src/sim/data/` are generated; the tools that made them are not in this repo.
