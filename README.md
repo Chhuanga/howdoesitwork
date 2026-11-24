@@ -23,6 +23,8 @@ npm run build
 
 ## Adding a beat
 
+Read [docs/topic-guidelines.md](docs/topic-guidelines.md) first. It lists what every topic and beat should include, including the planned "Explain in detail" section.
+
 1. Add its id to the topic in `src/lib/topics.ts`. Beat numbers and Back/Next links come from that order.
 2. Write `src/content/<topic>/<id>.mdx`. Frontmatter: `title`, `question`, `csTerms`, and optionally `honestyNote` and `unlockHint` (what the learner must do to unlock Next).
 3. Write the interaction in `src/beats/<topic>/` and add it to `src/lib/interactionRegistry.tsx`. Tell the shared scene what to show with `setScene(...)`, call `useReveal()` when the learner has seen the point, and wrap sheet controls in `<CardSlot>`. Add a line to `src/content/glossary.ts` for any new CS term.
